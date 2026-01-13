@@ -1,0 +1,124 @@
+<aside class="w-64 bg-slate-950 border-r border-slate-900 p-6 flex flex-col h-screen sticky top-0">
+    <div class="flex items-center gap-3 mb-10 px-2">
+        <div
+            class="w-10 h-10 flex-shrink-0 shadow-lg shadow-emerald-500/20 rounded-lg overflow-hidden border border-white/10">
+            <img src="/assets/logo.png" alt="Logo" class="w-full h-full object-cover">
+        </div>
+        <span class="text-xl font-black uppercase italic tracking-tighter text-white">Yggdrasil</span>
+    </div>
+
+    <nav class="space-y-2 mb-10">
+        <a href="/dashboard.html"
+            class="flex items-center gap-3 p-3 rounded-xl text-sm text-slate-400 hover:bg-white/5 transition">
+            <i class="fa-solid fa-house w-5 text-emerald-500"></i> Accueil
+        </a>
+        <a href="/projects.html"
+            class="flex items-center gap-3 p-3 rounded-xl text-sm text-white bg-white/5 border border-white/10 transition hover:border-emerald-500/50">
+            <i class="fa-solid fa-list-ul w-5 text-emerald-500"></i> TOUS MES PROJETS
+        </a>
+        <a href="https://www.notion.so" target="_blank"
+            class="flex items-center gap-3 p-3 rounded-xl text-sm text-slate-400 hover:bg-white/5 transition">
+            <i class="fa-solid fa-book w-5 text-emerald-500"></i> Mes Cours
+        </a>
+    </nav>
+
+    <div class="flex-grow overflow-y-auto pr-2 custom-scrollbar">
+        <p class="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-4 px-3 italic">Accès Rapide</p>
+        <div id="side-menu-projects" class="space-y-1">
+        </div>
+    </div>
+
+    <div class="mt-auto pt-6 border-t border-white/5 space-y-4">
+        <!-- User Profile -->
+        <div id="user-profile" class="hidden flex items-center gap-3 px-2">
+            <img id="user-avatar" src="" class="w-8 h-8 rounded-full border border-emerald-500/30">
+            <div class="overflow-hidden">
+                <div id="user-name" class="text-xs font-bold text-white truncate">User</div>
+                <div class="text-[10px] text-emerald-500 uppercase tracking-widest cursor-pointer hover:underline"
+                    onclick="logout()">Déconnexion</div>
+            </div>
+        </div>
+
+        <!-- Login Button -->
+        <a id="btn-login" href="/api/auth/github"
+            class="hidden w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 border border-white/5">
+            <i class="fa-brands fa-github text-lg"></i> Connexion
+        </a>
+
+        <button onclick="openProjectModal()"
+            class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
+            <i class="fa-solid fa-plus"></i> NEW PROJECT
+        </button>
+    </div>
+
+    <script>
+        (async function checkAuth() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tokenFromUrl = urlParams.get('token');
+            if (tokenFromUrl) {
+                localStorage.setItem('yggdrasil_token', tokenFromUrl);
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            const token = localStorage.getItem('yggdrasil_token');
+            const loginBtn = document.getElementById('btn-login');
+            const userProfile = document.getElementById('user-profile');
+
+            if (!token) {
+                loginBtn.classList.remove('hidden');
+            } else {
+                try {
+                    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
+                    if (res.ok) {
+                        const user = await res.json();
+                        document.getElementById('user-avatar').src = user.avatar;
+                        document.getElementById('user-name').innerText = user.username;
+                        userProfile.classList.remove('hidden');
+                        userProfile.classList.add('flex');
+                    } else { throw new Error('Invalid Token'); }
+                } catch (e) {
+                    console.error(e);
+                    localStorage.removeItem('yggdrasil_token');
+                    loginBtn.classList.remove('hidden');
+                }
+            }
+        })();
+        function logout() {
+            localStorage.removeItem('yggdrasil_token');
+            window.location.reload();
+        }
+    </script>
+</aside>
+
+<div id="project-modal"
+    class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+    <div class="glass-card w-full max-w-md rounded-3xl p-8 border border-emerald-500/30 shadow-2xl animate-in zoom-in duration-200"
+        style="background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px);">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-black uppercase italic text-white tracking-tighter">Initialiser une Rune</h2>
+            <button onclick="closeProjectModal()"
+                class="text-slate-500 hover:text-white text-2xl transition">&times;</button>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-widest">Nom du
+                    Projet</label>
+                <input type="text" id="modal-project-name"
+                    class="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition"
+                    placeholder="Ex: Aurora">
+            </div>
+            <div>
+                <label
+                    class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-widest">Description</label>
+                <textarea id="modal-project-desc"
+                    class="w-full h-32 bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-300 outline-none focus:border-emerald-500 resize-none transition"
+                    placeholder="Objectifs et runes du projet..."></textarea>
+            </div>
+
+            <button onclick="submitNewProject()"
+                class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-bold transition mt-4 shadow-lg shadow-emerald-900/20 uppercase tracking-widest text-xs">
+                Graver le Projet
+            </button>
+        </div>
+    </div>
+</div>

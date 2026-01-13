@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Projet | Yggdrasil</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .task-col {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 1.5rem;
+            min-height: 500px;
+        }
+
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(6px);
+        }
+
+        select option {
+            background: #1e293b;
+            color: white;
+        }
+    </style>
+</head>
+
+<body class="flex min-h-screen">
+    <div id="sidebar-container"></div>
+
+    <div id="task-modal" class="hidden fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4">
+        <div class="glass-card w-full max-w-2xl rounded-3xl p-8 border border-emerald-500/30 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <span class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Édition de mission</span>
+                <button onclick="closeTaskModal()" class="text-slate-500 hover:text-white text-2xl">&times;</button>
+            </div>
+            <input type="hidden" id="modal-task-id">
+            <div class="space-y-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="col-span-2 lg:col-span-1">
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2">Titre</label>
+                        <input type="text" id="modal-task-title"
+                            class="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:border-emerald-500 outline-none font-bold">
+                    </div>
+                    <div class="col-span-2 lg:col-span-1">
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2">État</label>
+                        <select id="modal-task-status"
+                            class="w-full bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:border-emerald-500 outline-none cursor-pointer">
+                            <option value="todo">À Faire</option>
+                            <option value="in_progress">En Cours</option>
+                            <option value="done">Terminé</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2">Notes techniques</label>
+                    <textarea id="modal-task-long-desc"
+                        class="w-full h-48 bg-slate-900/50 border border-white/10 rounded-xl px-4 py-3 focus:border-emerald-500 outline-none text-slate-300 resize-none"></textarea>
+                </div>
+                <div class="flex gap-4">
+                    <button onclick="saveTaskDetails()"
+                        class="flex-grow bg-emerald-600 hover:bg-emerald-500 py-4 rounded-xl font-bold transition">Enregistrer</button>
+                    <button onclick="deleteTask()"
+                        class="px-6 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition border border-red-500/20"><i
+                            class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <main class="flex-grow p-10 max-w-7xl mx-auto w-full">
+        <div class="flex justify-between items-center mb-10">
+            <div>
+                <select id="p-status-select" onchange="updateProjectStatus(this.value)"
+                    class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold uppercase rounded-full px-3 py-1 outline-none cursor-pointer">
+                    <option value="En cours">En cours</option>
+                    <option value="En pause">En pause</option>
+                    <option value="Terminé">Terminé</option>
+                </select>
+                <h1 id="p-name" class="text-6xl font-black tracking-tighter uppercase italic text-white mt-4">...</h1>
+            </div>
+            <div class="glass-card p-6 rounded-3xl flex items-center gap-6">
+                <div class="text-right">
+                    <p id="p-status-text" class="text-2xl font-black text-emerald-400 italic">0% STABLE</p>
+                </div>
+                <div class="relative w-16 h-16 flex items-center justify-center">
+                    <svg class="w-full h-full transform -rotate-90">
+                        <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4" fill="transparent"
+                            class="text-slate-800" />
+                        <circle id="p-progress-circle" cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4"
+                            fill="transparent" stroke-dasharray="175.9" stroke-dashoffset="175.9"
+                            class="text-emerald-500 transition-all duration-1000" />
+                    </svg>
+                    <span id="p-progress-label" class="absolute text-[10px] font-bold text-white">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs Navigation -->
+        <div class="flex gap-8 mb-8 border-b border-white/5">
+            <button
+                class="tab-btn px-4 py-2 text-sm font-bold uppercase tracking-widest text-emerald-500 border-b-2 border-emerald-500 transition-all hover:text-white"
+                data-tab="missions" onclick="switchTab('missions')">Missions</button>
+            <button
+                class="tab-btn px-4 py-2 text-sm font-bold uppercase tracking-widest text-slate-400 border-b-2 border-transparent transition-all hover:text-white"
+                data-tab="logs" onclick="switchTab('logs')">Mémoire Technique</button>
+        </div>
+
+        <!-- MISSIONS VIEW -->
+        <div id="view-missions" class="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
+            <div class="task-col p-6 border border-white/5">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">À Faire</h3>
+                    <button onclick="showTaskInput()" class="text-emerald-500 hover:text-white transition"><i
+                            class="fa-solid fa-plus-circle"></i></button>
+                </div>
+
+                <div id="quick-task-input" class="hidden mb-4">
+                    <input type="text" id="new-task-title" onkeyup="if(event.key === 'Enter') submitNewTask()"
+                        placeholder="Nom de la tâche + Enter"
+                        class="w-full bg-slate-900/80 border border-emerald-500/30 rounded-xl px-4 py-3 text-sm outline-none focus:border-emerald-500 shadow-lg shadow-emerald-500/5">
+                </div>
+
+                <div id="tasks-todo" class="space-y-3"></div>
+            </div>
+            <div class="task-col p-6 border border-emerald-500/10">
+                <h3 class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-6">En Cours</h3>
+                <div id="tasks-in_progress" class="space-y-3"></div>
+            </div>
+            <div class="task-col p-6 border border-white/5 opacity-60">
+                <h3 class="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-6">Terminé</h3>
+                <div id="tasks-done" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <!-- LOGS VIEW -->
+        <div id="view-logs" class="hidden animate-in fade-in duration-300">
+            <div class="flex justify-end mb-6">
+                <button onclick="openLogModal()"
+                    class="bg-purple-600/20 hover:bg-purple-600 text-purple-400 hover:text-white px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition flex items-center gap-2 border border-purple-500/30">
+                    <i class="fa-solid fa-pen-nib"></i> Écrire une entrée
+                </button>
+            </div>
+            <div id="logs-container" class="space-y-4 max-w-4xl mx-auto"></div>
+        </div>
+    </main>
+
+    <script src="/js/navigation.js"></script>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const name = urlParams.get('name') || 'Aurora';
+        let projectId = null;
+        let allTasks = [];
+        let token = null;
+
+        async function initPage() {
+            token = localStorage.getItem('yggdrasil_token');
+            if (!token) return window.location.href = '/';
+
+            const res = await fetch(`/api/project-details/${encodeURIComponent(name)}`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+
+            if (res.status === 401 || res.status === 403) return window.location.href = '/';
+            if (!res.ok) return alert("Projet introuvable ou accès refusé");
+
+            const p = await res.json();
+            projectId = p.id;
+            allTasks = p.tasks;
+
+            document.getElementById('p-name').innerText = p.name;
+            document.getElementById('p-status-select').value = p.status;
+            document.getElementById('p-status-text').innerText = p.progress + "% STABLE";
+            document.getElementById('p-progress-label').innerText = p.progress + "%";
+            document.getElementById('p-progress-circle').style.strokeDashoffset = 175.9 - (p.progress / 100 * 175.9);
+
+            renderTasks(p.tasks);
+        }
+
+        function renderTasks(tasks) {
+            ['todo', 'in_progress', 'done'].forEach(status => {
+                document.getElementById(`tasks-${status}`).innerHTML = tasks.filter(t => t.status === status).map(t => `
+                    <div onclick="openTaskModal(${t.id})" class="p-4 bg-slate-900/40 border border-white/5 rounded-2xl cursor-pointer hover:border-emerald-500/50 transition">
+                        <span class="text-sm text-slate-300 font-medium">${t.description}</span>
+                    </div>
+                `).join('');
+            });
+        }
+
+        function showTaskInput() {
+            document.getElementById('quick-task-input').classList.remove('hidden');
+            document.getElementById('new-task-title').focus();
+        }
+
+        async function submitNewTask() {
+            const desc = document.getElementById('new-task-title').value;
+            if (!desc) return;
+
+            await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ project_id: projectId, description: desc })
+            });
+            window.location.reload();
+        }
+
+        function openTaskModal(taskId) {
+            const task = allTasks.find(t => t.id === taskId);
+            document.getElementById('modal-task-id').value = task.id;
+            document.getElementById('modal-task-title').value = task.description;
+            document.getElementById('modal-task-status').value = task.status;
+            document.getElementById('modal-task-long-desc').value = task.long_description || "";
+            document.getElementById('task-modal').classList.remove('hidden');
+        }
+
+        function closeTaskModal() { document.getElementById('task-modal').classList.add('hidden'); }
+
+        async function saveTaskDetails() {
+            const id = document.getElementById('modal-task-id').value;
+            const title = document.getElementById('modal-task-title').value;
+            const status = document.getElementById('modal-task-status').value;
+            const longDesc = document.getElementById('modal-task-long-desc').value;
+            await fetch('/api/tasks/update-details', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ id, description: title, long_description: longDesc, status })
+            });
+            window.location.reload();
+        }
+
+        async function deleteTask() {
+            const id = document.getElementById('modal-task-id').value;
+            if (!confirm("Supprimer cette tâche ?")) return;
+            await fetch('/api/tasks/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ id })
+            });
+            window.location.reload();
+        }
+
+        async function updateProjectStatus(status) {
+            await fetch('/api/project-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ name, status })
+            });
+        }
+
+        // Lancement avec chargement de la sidebar
+        window.onload = () => includeSidebar().then(initPage);
+
+        // --- LOGS FEATURE ---
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                if (b.dataset.tab === tab) {
+                    b.classList.add('text-emerald-500', 'border-b-2', 'border-emerald-500');
+                    b.classList.remove('text-slate-400', 'border-transparent');
+                } else {
+                    b.classList.remove('text-emerald-500', 'border-b-2', 'border-emerald-500');
+                    b.classList.add('text-slate-400', 'border-transparent');
+                }
+            });
+            if (tab === 'missions') {
+                document.getElementById('view-missions').classList.remove('hidden');
+                document.getElementById('view-logs').classList.add('hidden');
+            } else {
+                document.getElementById('view-missions').classList.add('hidden');
+                document.getElementById('view-logs').classList.remove('hidden');
+                loadLogs();
+            }
+        }
+
+        async function loadLogs() {
+            const container = document.getElementById('logs-container');
+            container.innerHTML = '<div class="text-slate-500 text-sm">Chargement...</div>';
+            const res = await fetch(`/api/projects/${projectId}/logs`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const logs = await res.json();
+            container.innerHTML = logs.map(l => `
+                <div class="relative pl-6 pb-6 border-l border-slate-700 last:border-0 last:pb-0">
+                     <div class="absolute -left-[5px] top-0 w-2.5 h-2.5 rounded-full ${l.entry_type === 'antigravity' ? 'bg-purple-500 shadow-purple-500/50' : (l.entry_type === 'error' ? 'bg-red-500' : 'bg-emerald-500')} shadow-lg"></div>
+                     <div class="glass-card p-4 rounded-xl border border-white/5">
+                        <div class="flex justify-between items-center mb-2">
+                             <span class="text-[10px] font-bold uppercase tracking-widest ${l.entry_type === 'antigravity' ? 'text-purple-400' : 'text-slate-400'}">${l.entry_type}</span>
+                             <span class="text-[10px] font-mono text-slate-500">${new Date(l.created_at).toLocaleString()}</span>
+                        </div>
+                        <div class="text-slate-300 text-sm font-mono whitespace-pre-wrap">${l.content}</div>
+                     </div>
+                </div>
+            `).join('');
+        }
+
+        function openLogModal() { document.getElementById('log-modal').classList.remove('hidden'); }
+        function closeLogModal() { document.getElementById('log-modal').classList.add('hidden'); }
+
+        async function submitNewLog() {
+            const content = document.getElementById('new-log-content').value;
+            const type = document.getElementById('new-log-type').value;
+            await fetch('/api/logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ project_id: projectId, content, entry_type: type })
+            });
+            closeLogModal();
+            loadLogs();
+        }
+    </script>
+
+    <!-- Logs Modal -->
+    <div id="log-modal" class="hidden fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4">
+        <div class="glass-card w-full max-w-2xl rounded-3xl p-8 border border-purple-500/30 shadow-2xl">
+            <h2 class="text-xl font-bold text-white mb-4">Nouvelle Entrée</h2>
+            <div class="mb-4">
+                <select id="new-log-type"
+                    class="bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm mb-2">
+                    <option value="log">Log Technique</option>
+                    <option value="milestone">Milestone</option>
+                    <option value="error">Erreur / Bug</option>
+                </select>
+                <textarea id="new-log-content"
+                    class="w-full h-48 bg-slate-900/50 border border-white/10 rounded-xl p-4 text-slate-300 font-mono text-sm outline-none focus:border-purple-500"
+                    placeholder="Contenu du log..."></textarea>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeLogModal()" class="text-slate-400 hover:text-white px-4">Annuler</button>
+                <button onclick="submitNewLog()"
+                    class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-bold">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
