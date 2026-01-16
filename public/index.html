@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,60 +8,69 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&display=swap');
-    
-    body { 
-        background-color: #02040a; /* Noir profond façon GitHub Dark */
-        color: #e2e8f0; 
-        font-family: 'Inter', sans-serif;
-        overflow-x: hidden;
-    }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&display=swap');
 
-    /* Dégradé très discret pour ne pas fatiguer l'œil */
-    .hero-gradient {
-        background: radial-gradient(circle at 50% -20%, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
-    }
+        body {
+            background-color: #02040a;
+            /* Noir profond façon GitHub Dark */
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
 
-    /* Cartes plus sombres et moins transparentes */
-    .glass {
-        background: rgba(13, 17, 23, 0.8);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.03);
-    }
+        /* Dégradé très discret pour ne pas fatiguer l'œil */
+        .hero-gradient {
+            background: radial-gradient(circle at 50% -20%, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
+        }
 
-    .glow-text {
-        color: #10b981;
-        text-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
-    }
+        /* Cartes plus sombres et moins transparentes */
+        .glass {
+            background: rgba(13, 17, 23, 0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
 
-    /* Bouton principal moins "flashy" mais toujours émeraude */
-    .btn-aurora {
-        background: #065f46;
-        transition: all 0.3s ease;
-        border: 1px solid rgba(16, 185, 129, 0.2);
-    }
+        .glow-text {
+            color: #10b981;
+            text-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+        }
 
-    .btn-aurora:hover {
-        background: #059669;
-        transform: translateY(-2px);
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
-    }
+        /* Bouton principal moins "flashy" mais toujours émeraude */
+        .btn-aurora {
+            background: #065f46;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
 
-    /* Texte secondaire pour soulager la vue */
-    .text-dim {
-        color: #64748b;
-    }
+        .btn-aurora:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+        }
 
-    .floating {
-        animation: floating 4s ease-in-out infinite;
-    }
+        /* Texte secondaire pour soulager la vue */
+        .text-dim {
+            color: #64748b;
+        }
 
-    @keyframes floating {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-10px); }
-    }
-</style>
+        .floating {
+            animation: floating 4s ease-in-out infinite;
+        }
+
+        @keyframes floating {
+
+            0%,
+            100% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+    </style>
 </head>
+
 <body class="hero-gradient min-h-screen flex flex-col items-center">
 
     <header class="w-full max-w-7xl p-8 flex justify-between items-center">
@@ -68,14 +78,16 @@
             <img src="/assets/logo.png" alt="Logo" class="w-10 h-10 rounded-lg shadow-lg shadow-emerald-500/20">
             <span class="text-xl font-black italic tracking-tighter uppercase glow-text">Yggdrasil</span>
         </div>
-        <a href="/api/auth/github" class="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-400 transition">
+        <a href="/api/auth/github"
+            class="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-400 transition">
             Accès Racine
         </a>
     </header>
 
     <main class="flex-grow flex flex-col items-center justify-center text-center px-6 max-w-5xl">
         <div class="mb-8">
-            <span class="px-4 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-[0.4em]">
+            <span
+                class="px-4 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-[0.4em]">
                 Protocol Aurora • 2026
             </span>
         </div>
@@ -85,11 +97,13 @@
         </h1>
 
         <p class="text-slate-400 text-lg md:text-xl mb-12 max-w-2xl font-light">
-            Centralisez vos développements, suivez vos runes et connectez vos outils stratégiques sur une interface unique.
+            Centralisez vos développements, suivez vos runes et connectez vos outils stratégiques sur une interface
+            unique.
         </p>
 
         <div class="w-full max-w-sm">
-            <a href="/api/auth/github" class="btn-aurora w-full flex items-center justify-center gap-4 py-5 rounded-2xl text-white font-black uppercase tracking-[0.2em] text-sm">
+            <a href="/api/auth/github"
+                class="btn-aurora w-full flex items-center justify-center gap-4 py-5 rounded-2xl text-white font-black uppercase tracking-[0.2em] text-sm">
                 <i class="fa-brands fa-github text-xl"></i>
                 Se connecter via GitHub
             </a>
@@ -123,5 +137,25 @@
         </div>
     </footer>
 
+    <script>
+        (function () {
+            // 1. Check URL Token (Login callback)
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            if (token) {
+                localStorage.setItem('yggdrasil_token', token);
+                window.location.href = '/dashboard.html';
+                return;
+            }
+
+            // 2. Check stored token (Auto-login)
+            const storedToken = localStorage.getItem('yggdrasil_token');
+            if (storedToken) {
+                // Optional: Verify token validity via API here if needed, but for speed just redirect
+                window.location.href = '/dashboard.html';
+            }
+        })();
+    </script>
 </body>
+
 </html>
