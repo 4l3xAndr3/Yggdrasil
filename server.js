@@ -3,12 +3,18 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
+const jwt = require('jsonwebtoken');
 const { pool, testConnection } = require('./config/database');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 app.use(cors());
+
+// --- GEMINI CONFIG ---
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "API_KEY_MISSING");
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // --- AUTHENTICATION GITHUB ---
 
@@ -51,13 +57,16 @@ app.get('/api/auth/github/callback', async (req, res) => {
 
             if (rows.length === 0) {
                 const [result] = await pool.execute(
-                    'INSERT INTO users (github_id, username, avatar_url) VALUES (?, ?, ?)',
-                    [githubUser.id, githubUser.login, githubUser.avatar_url]
+                    'INSERT INTO users (github_id, username, avatar_url, github_access_token) VALUES (?, ?, ?, ?)',
+                    [githubUser.id, githubUser.login, githubUser.avatar_url, accessToken]
                 );
                 userId = result.insertId;
             } else {
                 userId = rows[0].id;
-                await pool.execute('UPDATE users SET username = ?, avatar_url = ? WHERE id = ?', [githubUser.login, githubUser.avatar_url, userId]);
+                await pool.execute(
+                    'UPDATE users SET username = ?, avatar_url = ?, github_access_token = ? WHERE id = ?',
+                    [githubUser.login, githubUser.avatar_url, accessToken, userId]
+                );
             }
 
             // Generate JWT
@@ -178,6 +187,73 @@ app.post('/api/projects/create', authenticateToken, async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- GITHUB IMPORT ROUTES ---
+
+app.get('/api/github/repos', authenticateToken, async (req, res) => {
+    try {
+        // Recuperer le token github de l'utilisateur
+        const [rows] = await pool.execute('SELECT github_access_token FROM users WHERE id = ?', [req.user.id]);
+        if (rows.length === 0 || !rows[0].github_access_token) {
+            return res.status(400).json({ error: 'GitHub Not Connected' });
+        }
+
+        const ghToken = rows[0].github_access_token;
+
+        // Appeler GitHub API
+        const ghRes = await axios.get('https://api.github.com/user/repos?sort=updated&per_page=100', {
+            headers: {
+                Authorization: `Bearer ${ghToken}`,
+                Accept: 'application/vnd.github.v3+json'
+            }
+        });
+
+        // Filtrer / Mapper les données
+        const repos = ghRes.data.map(repo => ({
+            id: repo.id,
+            name: repo.name,
+            description: repo.description,
+            html_url: repo.html_url,
+            private: repo.private
+        }));
+
+        res.json(repos);
+
+    } catch (err) {
+        console.error("Github Import Error:", err.message);
+        if (err.response && err.response.status === 401) {
+            return res.status(401).json({ error: 'GitHub Token Invalid' });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/projects/import-github', authenticateToken, async (req, res) => {
+    const { repos } = req.body; // Array of { name, description, html_url }
+    if (!repos || !Array.isArray(repos)) return res.status(400).json({ error: 'Invalid data' });
+
+    let importedCount = 0;
+    const errors = [];
+
+    try {
+        for (let repo of repos) {
+            // Check doublons
+            const [existing] = await pool.execute('SELECT id FROM projects WHERE name = ? AND user_id = ?', [repo.name, req.user.id]);
+
+            if (existing.length === 0) {
+                await pool.execute(
+                    'INSERT INTO projects (user_id, name, description, status, progress) VALUES (?, ?, ?, "En cours", 0)',
+                    [req.user.id, repo.name, repo.description || "Importé depuis GitHub"]
+                );
+                importedCount++;
+            }
+        }
+        res.json({ success: true, count: importedCount });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/projects-list', authenticateToken, async (req, res) => {
     try {
         const [rows] = await pool.execute('SELECT id, name, status FROM projects WHERE user_id = ? ORDER BY name ASC', [req.user.id]);
@@ -206,11 +282,20 @@ app.get('/api/project-details/:name', authenticateToken, async (req, res) => {
 app.post('/api/tasks', authenticateToken, async (req, res) => {
     const { project_id, description, status } = req.body;
     try {
-        const [proj] = await pool.execute('SELECT user_id FROM projects WHERE id = ?', [project_id]);
+        const [proj] = await pool.execute('SELECT user_id, github_repo FROM projects WHERE id = ?', [project_id]);
         if (proj.length === 0 || (proj[0].user_id && proj[0].user_id !== req.user.id)) return res.sendStatus(403);
 
         await pool.execute('INSERT INTO tasks (project_id, description, status) VALUES (?, ?, ?)', [project_id, description, status || 'todo']);
         await updateProjectProgress(project_id);
+
+        // Sync if needed (example if creating directly in progress)
+        if (status === 'in_progress' && proj[0].github_repo) {
+            const [users] = await pool.execute('SELECT github_access_token FROM users WHERE id = ?', [req.user.id]);
+            if (users.length > 0 && users[0].github_access_token) {
+                syncTaskToGithub(users[0].github_access_token, proj[0].github_repo, description).catch(console.error);
+            }
+        }
+
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -218,14 +303,72 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
 app.post('/api/tasks/update-details', authenticateToken, async (req, res) => {
     const { id, description, long_description, status } = req.body;
     try {
-        const [task] = await pool.execute('SELECT t.project_id, p.user_id FROM tasks t JOIN projects p ON t.project_id = p.id WHERE t.id = ?', [id]);
+        const [task] = await pool.execute('SELECT t.project_id, p.user_id, p.github_repo FROM tasks t JOIN projects p ON t.project_id = p.id WHERE t.id = ?', [id]);
         if (task.length === 0 || task[0].user_id !== req.user.id) return res.sendStatus(403);
 
         await pool.execute('UPDATE tasks SET description = ?, long_description = ?, status = ? WHERE id = ?', [description, long_description, status, id]);
         await updateProjectProgress(task[0].project_id);
+
+        // --- SYNC GITHUB ---
+        if ((status === 'in_progress' || status === 'en cours') && task[0].github_repo) {
+            const [users] = await pool.execute('SELECT github_access_token FROM users WHERE id = ?', [req.user.id]);
+            if (users.length > 0 && users[0].github_access_token) {
+                // Background sync, don't await blocking response
+                syncTaskToGithub(users[0].github_access_token, task[0].github_repo, description).catch(err => console.error("Sync Error:", err.message));
+            }
+        }
+
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// --- HELPER FUNCTION : GITHUB SYNC ---
+async function syncTaskToGithub(token, repoFullName, taskDesc) {
+    const filePath = 'taches.md';
+    const apiUrl = `https://api.github.com/repos/${repoFullName}/contents/${filePath}`;
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json'
+    };
+
+    try {
+        // 1. Get current content
+        let sha = null;
+        let content = "";
+
+        try {
+            const resGet = await axios.get(apiUrl, { headers });
+            sha = resGet.data.sha;
+            content = Buffer.from(resGet.data.content, 'base64').toString('utf8');
+        } catch (e) {
+            if (e.response && e.response.status === 404) {
+                // File doesn't exist, create it
+                content = "# Tâches en cours\n\n";
+            } else {
+                throw e;
+            }
+        }
+
+        // 2. Append task if not present
+        const taskLine = `- [ ] ${taskDesc}`;
+        if (!content.includes(taskLine)) {
+            content += `\n${taskLine}`;
+
+            // 3. Update file
+            const payload = {
+                message: `Add task: ${taskDesc}`,
+                content: Buffer.from(content).toString('base64'),
+                sha: sha // undefined if creating new
+            };
+
+            await axios.put(apiUrl, payload, { headers });
+            console.log(`[GitHub Sync] Added "${taskDesc}" to ${repoFullName}`);
+        }
+
+    } catch (err) {
+        console.error(`[GitHub Sync Failed] ${repoFullName} : ${err.message}`);
+    }
+}
 
 app.post('/api/tasks/delete', authenticateToken, async (req, res) => {
     const { id } = req.body;
@@ -260,6 +403,7 @@ async function initDatabase() {
                 github_id VARCHAR(255) UNIQUE NOT NULL,
                 username VARCHAR(255) NOT NULL,
                 avatar_url VARCHAR(255),
+                github_access_token VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
@@ -274,6 +418,7 @@ async function initDatabase() {
                 status ENUM('active', 'completed', 'archived', 'paused') DEFAULT 'active',
                 progress INT DEFAULT 0,
                 is_favorite BOOLEAN DEFAULT FALSE,
+                github_repo VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -285,6 +430,18 @@ async function initDatabase() {
             await pool.execute("ALTER TABLE projects ADD COLUMN user_id INT");
             await pool.execute("ALTER TABLE projects ADD CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL");
             console.log("-> Migrated: Added user_id to projects table.");
+        } catch (e) { /* Ignore if exists */ }
+
+        // Auto-Migration: Add github_repo if missing
+        try {
+            await pool.execute("ALTER TABLE projects ADD COLUMN github_repo VARCHAR(255)");
+            console.log("-> Migrated: Added github_repo to projects table.");
+        } catch (e) { /* Ignore if exists */ }
+
+        // Auto-Migration: Add github_access_token if missing
+        try {
+            await pool.execute("ALTER TABLE users ADD COLUMN github_access_token VARCHAR(255)");
+            console.log("-> Migrated: Added github_access_token to users table.");
         } catch (e) { /* Ignore if exists */ }
 
         await pool.execute(`
@@ -314,7 +471,7 @@ async function initDatabase() {
     } catch (e) { console.error("❌ DB Init Error:", e); }
 }
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 async function startServer() {
     const dbConnected = await testConnection();

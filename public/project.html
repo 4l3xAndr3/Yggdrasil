@@ -115,6 +115,10 @@
                 data-tab="missions" onclick="switchTab('missions')">Missions</button>
             <button
                 class="tab-btn px-4 py-2 text-sm font-bold uppercase tracking-widest text-slate-400 border-b-2 border-transparent transition-all hover:text-white"
+                data-tab="brainstorm" onclick="switchTab('brainstorm')"><i
+                    class="fa-solid fa-wand-magic-sparkles mr-2"></i>Brainstorming IA</button>
+            <button
+                class="tab-btn px-4 py-2 text-sm font-bold uppercase tracking-widest text-slate-400 border-b-2 border-transparent transition-all hover:text-white"
                 data-tab="logs" onclick="switchTab('logs')">Mémoire Technique</button>
         </div>
 
@@ -276,12 +280,145 @@
             });
             if (tab === 'missions') {
                 document.getElementById('view-missions').classList.remove('hidden');
+                document.getElementById('view-brainstorm').classList.add('hidden');
+                document.getElementById('view-logs').classList.add('hidden');
+            } else if (tab === 'brainstorm') {
+                document.getElementById('view-missions').classList.add('hidden');
+                document.getElementById('view-brainstorm').classList.remove('hidden');
                 document.getElementById('view-logs').classList.add('hidden');
             } else {
                 document.getElementById('view-missions').classList.add('hidden');
+                document.getElementById('view-brainstorm').classList.add('hidden');
                 document.getElementById('view-logs').classList.remove('hidden');
                 loadLogs();
             }
+        }
+
+        // --- BRAINSTORMING LOGIC ---
+        let chatHistory = [];
+
+        async function sendBrainstormMessage() {
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            // User UI
+            appendMessage('user', msg);
+            input.value = '';
+
+            // Loading UI
+            const loadingId = appendMessage('ai', 'Thinking...', true);
+
+            try {
+                const res = await fetch('/api/brainstorm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({
+                        project_name: document.getElementById('p-name').innerText,
+                        project_desc: "", // Manque description dans initPage, on fera sans pour l'instant ou on l'ajoute plus tard
+                        current_tasks: allTasks.map(t => t.description),
+                        message: msg,
+                        history: chatHistory
+                    })
+                });
+
+                const data = await res.json();
+
+                // Remove loading
+                document.getElementById(loadingId).remove();
+
+                if (data.error) {
+                    appendMessage('error', data.error);
+                } else {
+                    appendMessage('ai', data.reply);
+
+                    // Update History
+                    chatHistory.push({ role: "user", parts: [{ text: msg }] });
+                    chatHistory.push({ role: "model", parts: [{ text: data.reply }] });
+
+                    // Handle Suggestions
+                    if (data.suggestions && data.suggestions.length > 0) {
+                        data.suggestions.forEach(addSuggestionCard);
+                        updateSuggestionCount();
+                    }
+                }
+            } catch (err) {
+                document.getElementById(loadingId).remove();
+                appendMessage('error', "Erreur de communication");
+            }
+        }
+
+        function appendMessage(role, text, isLoading = false) {
+            const container = document.getElementById('chat-history');
+            const id = 'msg-' + Date.now();
+
+            const isUser = role === 'user';
+            const html = `
+                <div id="${id}" class="flex gap-4 ${isUser ? 'flex-row-reverse' : ''}">
+                    <div class="w-8 h-8 rounded-full ${isUser ? 'bg-slate-700' : 'bg-purple-600'} flex items-center justify-center flex-shrink-0">
+                        <i class="fa-solid ${isUser ? 'fa-user' : 'fa-robot'} text-white text-xs"></i>
+                    </div>
+                    <div class="${isUser ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-100' : 'bg-slate-800/80 text-slate-300'} p-4 rounded-2xl ${isUser ? 'rounded-tr-none' : 'rounded-tl-none'} text-sm max-w-[80%]">
+                        ${isLoading ? '<div class="animate-pulse">...</div>' : text.replace(/\n/g, '<br>')}
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', html);
+            container.scrollTop = container.scrollHeight;
+            return id;
+        }
+
+        function addSuggestionCard(task) {
+            const list = document.getElementById('suggestions-list');
+            if (list.querySelector('.text-center')) list.innerHTML = ''; // Clear placeholder
+
+            const tempId = Date.now() + Math.random();
+            const html = `
+                <div id="sugg-${tempId}" class="p-4 bg-slate-900/80 border border-purple-500/30 rounded-xl group hover:border-purple-400 transition animate-in zoom-in duration-300">
+                    <h4 class="font-bold text-sm text-purple-100 mb-1 suggestion-title">${task.title}</h4>
+                    <p class="text-xs text-slate-400 mb-3 suggestion-desc">${task.description}</p>
+                    <div class="flex gap-2">
+                        <button onclick="acceptSuggestion('${tempId}')" class="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-2 rounded-lg text-xs font-bold transition">Ajouter</button>
+                        <button onclick="deleteSuggestion('${tempId}')" class="w-8 bg-slate-800 hover:text-red-400 text-slate-500 rounded-lg transition"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+            `;
+            list.insertAdjacentHTML('afterbegin', html);
+        }
+
+        function deleteSuggestion(id) {
+            document.getElementById('sugg-' + id).remove();
+            updateSuggestionCount();
+        }
+
+        async function acceptSuggestion(id) {
+            const el = document.getElementById('sugg-' + id);
+            const title = el.querySelector('.suggestion-title').innerText;
+            const desc = el.querySelector('.suggestion-desc').innerText;
+
+            // Create Task
+            await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ project_id: projectId, description: title, status: 'todo' })
+            });
+
+            // Need to update long description ? For now we just put title in desc, maybe we can update long desc later or put desc in long_desc immediately if API supported it fully (our API supports description + long_description in update but insert is limited? Let's check insert... API insert only takes project_id, description, status. So we lose the long description)
+            // Correction: On va recharger la page, mais idéalement il faudrait supporter long_description au create. 
+            // Pour l'instant, faisons simple : ajout titre.
+
+            el.remove();
+            updateSuggestionCount();
+
+            // Refresh tasks view secretly or reload ?
+            // Reload is safer for sync
+            window.location.reload();
+        }
+
+        function updateSuggestionCount() {
+            const count = document.getElementById('suggestions-list').children.length;
+            const placeholder = document.getElementById('suggestions-list').querySelector('.text-center');
+            document.getElementById('suggestion-count').innerText = placeholder ? 0 : count;
         }
 
         async function loadLogs() {
