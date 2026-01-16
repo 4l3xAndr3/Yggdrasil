@@ -178,7 +178,10 @@
                 headers: { 'Authorization': 'Bearer ' + token }
             });
 
-            if (res.status === 401 || res.status === 403) return window.location.href = '/';
+            if (res.status === 401 || res.status === 403) {
+                localStorage.removeItem('yggdrasil_token');
+                return window.location.href = '/';
+            }
             if (!res.ok) return alert("Projet introuvable ou accès refusé");
 
             const p = await res.json();

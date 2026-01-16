@@ -59,7 +59,10 @@
                 headers: { 'Authorization': 'Bearer ' + token }
             });
 
-            if (res.status === 401 || res.status === 403) return window.location.href = '/';
+            if (res.status === 401 || res.status === 403) {
+                localStorage.removeItem('yggdrasil_token');
+                return window.location.href = '/';
+            }
 
             const data = await res.json();
             document.getElementById('total-projects').innerText = data.totalActive;
