@@ -157,11 +157,64 @@
                 data-tab="missions" onclick="switchTab('missions')">Missions</button>
             <button
                 class="tab-btn px-4 py-2 text-sm font-bold uppercase tracking-widest text-slate-400 border-b-2 border-transparent transition-all hover:text-white"
+                data-tab="presentation" onclick="switchTab('presentation')"><i
+                    class="fa-solid fa-circle-info mr-2"></i>Présentation</button>
+            <button
+                class="tab-btn px-4 py-2 text-sm font-bold uppercase tracking-widest text-slate-400 border-b-2 border-transparent transition-all hover:text-white"
                 data-tab="brainstorm" onclick="switchTab('brainstorm')"><i
                     class="fa-solid fa-wand-magic-sparkles mr-2"></i>Brainstorming IA</button>
             <button
                 class="tab-btn px-4 py-2 text-sm font-bold uppercase tracking-widest text-slate-400 border-b-2 border-transparent transition-all hover:text-white"
                 data-tab="logs" onclick="switchTab('logs')">Mémoire Technique</button>
+        </div>
+
+        <!-- PRESENTATION VIEW -->
+        <div id="view-presentation" class="hidden animate-in fade-in duration-300">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Description -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="glass-card p-8 rounded-3xl border border-white/5">
+                        <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">À propos du
+                            projet</h3>
+                        <p id="p-desc-display" class="text-slate-300 leading-relaxed whitespace-pre-wrap">Aucune
+                            description.</p>
+                    </div>
+                </div>
+
+                <!-- Liens / Ressources -->
+                <div class="space-y-6">
+                    <div class="glass-card p-6 rounded-3xl border border-white/5">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Ressources &
+                                Liens</h3>
+                            <button onclick="document.getElementById('add-link-form').classList.toggle('hidden')"
+                                class="text-slate-400 hover:text-white transition"><i
+                                    class="fa-solid fa-plus"></i></button>
+                        </div>
+
+                        <!-- Add Link Form -->
+                        <div id="add-link-form"
+                            class="hidden mb-6 p-4 bg-slate-900/50 rounded-xl border border-white/5">
+                            <select id="new-link-type"
+                                class="w-full bg-slate-800 text-xs text-white p-2 rounded-lg mb-2 outline-none border border-white/10">
+                                <option value="GitHub">GitHub</option>
+                                <option value="Documentation">Documentation</option>
+                                <option value="Design">Design / Figma</option>
+                                <option value="Déploiement">Déploiement / Prod</option>
+                                <option value="Autre">Autre</option>
+                            </select>
+                            <input type="text" id="new-link-url" placeholder="URL (https://...)"
+                                class="w-full bg-slate-800 text-xs text-white p-2 rounded-lg mb-2 outline-none border border-white/10">
+                            <button onclick="addProjectLink()"
+                                class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-xs font-bold transition">Ajouter</button>
+                        </div>
+
+                        <div id="project-links-list" class="space-y-3">
+                            <!-- Links injected here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- MISSIONS VIEW -->
@@ -269,6 +322,7 @@
             allTasks = p.tasks;
 
             document.getElementById('p-name').innerText = p.name;
+            document.getElementById('p-desc-display').innerText = p.description || "Aucune description.";
             document.getElementById('p-status-select').value = p.status;
             document.getElementById('p-status-text').innerText = p.progress + "% STABLE";
             document.getElementById('p-progress-label').innerText = p.progress + "%";
@@ -363,19 +417,97 @@
             });
             if (tab === 'missions') {
                 document.getElementById('view-missions').classList.remove('hidden');
+                document.getElementById('view-presentation').classList.add('hidden');
                 document.getElementById('view-brainstorm').classList.add('hidden');
                 document.getElementById('view-logs').classList.add('hidden');
+            } else if (tab === 'presentation') {
+                document.getElementById('view-missions').classList.add('hidden');
+                document.getElementById('view-presentation').classList.remove('hidden');
+                document.getElementById('view-brainstorm').classList.add('hidden');
+                document.getElementById('view-logs').classList.add('hidden');
+                loadProjectLinks();
             } else if (tab === 'brainstorm') {
                 document.getElementById('view-missions').classList.add('hidden');
+                document.getElementById('view-presentation').classList.add('hidden');
                 document.getElementById('view-brainstorm').classList.remove('hidden');
                 document.getElementById('view-logs').classList.add('hidden');
                 loadBrainstormHistory();
             } else {
                 document.getElementById('view-missions').classList.add('hidden');
+                document.getElementById('view-presentation').classList.add('hidden');
                 document.getElementById('view-brainstorm').classList.add('hidden');
                 document.getElementById('view-logs').classList.remove('hidden');
                 loadLogs();
             }
+        }
+
+        // --- LINKS FEATURE ---
+        async function loadProjectLinks() {
+            try {
+                const res = await fetch(`/api/projects/${projectId}/links`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const links = await res.json();
+                renderLinks(links);
+            } catch (err) { console.error("Error loading links", err); }
+        }
+
+        function renderLinks(links) {
+            const container = document.getElementById('project-links-list');
+            if (links.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-500 italic text-center py-4">Aucun lien ajouté.</p>';
+                return;
+            }
+            container.innerHTML = links.map(l => {
+                let icon = 'fa-link';
+                // Auto icon
+                if (l.type === 'GitHub') icon = 'fa-github';
+                if (l.type === 'Documentation') icon = 'fa-book';
+                if (l.type === 'Design') icon = 'fa-pen-ruler';
+                if (l.type === 'Déploiement') icon = 'fa-rocket';
+
+                let colorClass = 'text-slate-400 group-hover:text-emerald-400';
+                if (l.type === 'GitHub') colorClass = 'text-slate-400 group-hover:text-white';
+                if (l.type === 'Déploiement') colorClass = 'text-emerald-500 group-hover:text-emerald-300';
+
+                return `
+                <div class="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg group hover:bg-slate-800 transition border border-transparent hover:border-white/10">
+                    <a href="${l.url}" target="_blank" class="flex items-center gap-3 flex-grow">
+                        <div class="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center ${colorClass} transition"><i class="fa-brands ${icon} ${icon.startsWith('fa-') ? 'fa-solid' : ''}"></i></div>
+                        <div>
+                            <div class="text-xs font-bold text-slate-300 group-hover:text-white transition uppercase tracking-wider">${l.type}</div>
+                            <div class="text-[10px] text-slate-500 truncate max-w-[150px]">${l.url}</div>
+                        </div>
+                    </a>
+                    <button onclick="deleteLink(${l.id})" class="text-slate-600 hover:text-red-500 transition px-2"><i class="fa-solid fa-trash text-xs"></i></button>
+                </div>
+                `;
+            }).join('');
+        }
+
+        async function addProjectLink() {
+            const type = document.getElementById('new-link-type').value;
+            const url = document.getElementById('new-link-url').value;
+            if (!url) return;
+
+            await fetch(`/api/projects/${projectId}/links`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ type, url })
+            });
+
+            document.getElementById('new-link-url').value = '';
+            document.getElementById('add-link-form').classList.add('hidden');
+            loadProjectLinks();
+        }
+
+        async function deleteLink(id) {
+            if (!confirm("Supprimer ce lien ?")) return;
+            await fetch(`/api/links/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            loadProjectLinks();
         }
 
         // --- BRAINSTORMING LOGIC ---

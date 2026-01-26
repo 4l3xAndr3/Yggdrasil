@@ -281,12 +281,12 @@ app.get('/api/project-details/:name', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/tasks', authenticateToken, async (req, res) => {
-    const { project_id, description, status } = req.body;
+    const { project_id, description, long_description, status } = req.body;
     try {
         const [proj] = await pool.execute('SELECT user_id, github_repo FROM projects WHERE id = ?', [project_id]);
         if (proj.length === 0 || (proj[0].user_id && proj[0].user_id !== req.user.id)) return res.sendStatus(403);
 
-        await pool.execute('INSERT INTO tasks (project_id, description, status) VALUES (?, ?, ?)', [project_id, description, status || 'todo']);
+        await pool.execute('INSERT INTO tasks (project_id, description, long_description, status) VALUES (?, ?, ?, ?)', [project_id, description, long_description || null, status || 'todo']);
         await updateProjectProgress(project_id);
 
         // Sync if needed (example if creating directly in progress)
@@ -438,6 +438,18 @@ async function initDatabase() {
             await pool.execute("ALTER TABLE projects ADD COLUMN github_repo VARCHAR(255)");
             console.log("-> Migrated: Added github_repo to projects table.");
         } catch (e) { /* Ignore if exists */ }
+
+        // Create Links Table
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS project_links (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                project_id INT NOT NULL,
+                type VARCHAR(50) NOT NULL,
+                url VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        `);
 
         // Auto-Migration: Add github_access_token if missing
         try {
@@ -600,6 +612,37 @@ app.post('/api/brainstorm', authenticateToken, async (req, res) => {
         console.error("Gemini Error:", err);
         res.status(500).json({ error: "L'IA est confuse... Vérifiez votre clé API." });
     }
+});
+
+// --- LINKS FEATURE ---
+app.get('/api/projects/:id/links', authenticateToken, async (req, res) => {
+    try {
+        const [proj] = await pool.execute('SELECT user_id FROM projects WHERE id = ?', [req.params.id]);
+        if (proj.length === 0 || (proj[0].user_id && proj[0].user_id !== req.user.id)) return res.sendStatus(403);
+        const [links] = await pool.execute('SELECT * FROM project_links WHERE project_id = ? ORDER BY created_at DESC', [req.params.id]);
+        res.json(links);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/projects/:id/links', authenticateToken, async (req, res) => {
+    const { type, url } = req.body;
+    try {
+        const [proj] = await pool.execute('SELECT user_id FROM projects WHERE id = ?', [req.params.id]);
+        if (proj.length === 0 || (proj[0].user_id && proj[0].user_id !== req.user.id)) return res.sendStatus(403);
+
+        await pool.execute('INSERT INTO project_links (project_id, type, url) VALUES (?, ?, ?)', [req.params.id, type, url]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/links/:id', authenticateToken, async (req, res) => {
+    try {
+        const [link] = await pool.execute('SELECT l.project_id, p.user_id FROM project_links l JOIN projects p ON l.project_id = p.id WHERE l.id = ?', [req.params.id]);
+        if (link.length === 0 || link[0].user_id !== req.user.id) return res.sendStatus(403);
+
+        await pool.execute('DELETE FROM project_links WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 const PORT = process.env.PORT || 3000;

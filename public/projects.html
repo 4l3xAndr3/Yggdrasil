@@ -1,34 +1,48 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <title>Tous mes projets | Yggdrasil</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
-        .glass-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
     </style>
 </head>
+
 <body class="flex min-h-screen">
     <div id="sidebar-container"></div>
 
     <main class="flex-grow p-10 max-w-5xl mx-auto">
         <h1 class="text-5xl font-black italic uppercase tracking-tighter mb-10">Archives Projets</h1>
         <div id="all-projects-list" class="space-y-4">
-            </div>
+        </div>
     </main>
 
     <script src="/js/navigation.js"></script>
     <script>
         async function initPage() {
-            const res = await fetch('/api/projects-list');
+            const token = localStorage.getItem('yggdrasil_token');
+            if (!token) return window.location.href = '/';
+
+            const res = await fetch('/api/projects-list', { headers: { 'Authorization': 'Bearer ' + token } });
             const projects = await res.json();
             const container = document.getElementById('all-projects-list');
 
             container.innerHTML = '';
             for (let p of projects) {
-                const resDet = await fetch(`/api/project-details/${encodeURIComponent(p.name)}`);
+                const resDet = await fetch(`/api/project-details/${encodeURIComponent(p.name)}`, { headers: { 'Authorization': 'Bearer ' + token } });
                 const details = await resDet.json();
                 container.innerHTML += `
                     <a href="/project.html?name=${p.name}" class="glass-card p-6 rounded-2xl flex items-center justify-between hover:border-emerald-500/50 transition group">
@@ -50,4 +64,5 @@
         window.onload = () => includeSidebar().then(initPage);
     </script>
 </body>
+
 </html>
