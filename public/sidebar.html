@@ -150,8 +150,11 @@
         <div id="github-error" class="hidden py-10 text-center">
             <i class="fa-solid fa-triangle-exclamation text-4xl text-amber-500 mb-4"></i>
             <p id="github-error-msg" class="text-sm text-slate-300"></p>
-            <a href="/api/auth/github" class="inline-block mt-4 text-emerald-400 font-bold hover:underline">Se
-                reconnecter à GitHub</a>
+            <p id="github-error-msg" class="text-sm text-slate-300"></p>
+            <button onclick="logout()"
+                class="inline-block mt-4 text-emerald-400 font-bold hover:underline bg-transparent border-none cursor-pointer">
+                Se déconnecter et réinitialiser
+            </button>
         </div>
 
         <div id="github-content" class="flex-grow overflow-hidden flex flex-col hidden">

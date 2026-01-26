@@ -126,12 +126,18 @@ async function fetchGithubRepos() {
             headers: { 'Authorization': 'Bearer ' + token }
         });
 
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || 'Erreur inconnue');
+        const text = await response.text();
+        let repos;
+        try {
+            repos = JSON.parse(text);
+        } catch (e) {
+            console.error("API Response not JSON:", text);
+            throw new Error("Réponse serveur invalide (HTML reçu)");
         }
 
-        const repos = await response.json();
+        if (!response.ok) {
+            throw new Error(repos.error || 'Erreur inconnue');
+        }
 
         list.innerHTML = repos.map(repo => `
             <div class="flex items-center gap-4 p-4 rounded-xl bg-slate-900/50 border border-white/5 hover:border-emerald-500/30 transition cursor-pointer" 

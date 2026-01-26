@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
-const jwt = require('jsonwebtoken');
+
 const { pool, testConnection } = require('./config/database');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -20,7 +20,8 @@ const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // 1. Redirect to GitHub
 app.get('/api/auth/github', (req, res) => {
-    const url = `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&redirect_uri=http://localhost:3000/api/auth/github/callback&scope=read:user`;
+    const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+    const url = `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&redirect_uri=${baseUrl}/api/auth/github/callback&scope=read:user`;
     res.redirect(url);
 });
 
@@ -470,6 +471,58 @@ async function initDatabase() {
         console.log("✅ Tables & Schema Verified");
     } catch (e) { console.error("❌ DB Init Error:", e); }
 }
+
+app.post('/api/brainstorm', authenticateToken, async (req, res) => {
+    const { project_name, project_desc, current_tasks, message, history } = req.body;
+
+    try {
+        const chat = model.startChat({
+            history: history || [],
+            generationConfig: {
+                maxOutputTokens: 2000,
+            },
+        });
+
+        const systemPrompt = `
+        Tu es un expert Product Manager et Tech Lead. Tu aides l'utilisateur à brainstormer sur son projet "${project_name}" (${project_desc}).
+        
+        Ta mission :
+        1. Répondre à la question ou discuter de l'idée de manière constructive et concise.
+        2. Détecter si des actions concrètes émergent de la discussion.
+        
+        SI tu proposes des nouvelles fonctionnalités ou tâches, tu DOIS les lister à la toute fin de ta réponse au format JSON strict, dans un bloc \`\`\`json \`\`\`.
+        Le JSON doit être une liste d'objets : [{"title": "Titre court", "description": "Description détaillée pour un développeur"}].
+        
+        Contexte des tâches existantes : 
+        ${JSON.stringify(current_tasks)}
+        
+        Si aucune tâche n'est pertinente à créer maintenant, ne mets pas de bloc JSON.
+        `;
+
+        const result = await chat.sendMessage(systemPrompt + "\n\nUser: " + message);
+        const response = result.response.text();
+
+        // Extraction du JSON si présent
+        let suggestedTasks = [];
+        let cleanResponse = response;
+
+        const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
+        if (jsonMatch && jsonMatch[1]) {
+            try {
+                suggestedTasks = JSON.parse(jsonMatch[1]);
+                cleanResponse = response.replace(jsonMatch[0], "").trim();
+            } catch (e) {
+                console.error("Failed to parse Gemini JSON suggestions", e);
+            }
+        }
+
+        res.json({ reply: cleanResponse, suggestions: suggestedTasks });
+
+    } catch (err) {
+        console.error("Gemini Error:", err);
+        res.status(500).json({ error: "L'IA est confuse... Vérifiez votre clé API." });
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 
