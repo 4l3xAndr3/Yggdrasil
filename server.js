@@ -544,7 +544,7 @@ app.post('/api/brainstorm', authenticateToken, async (req, res) => {
         const chat = model.startChat({
             history: history || [],
             generationConfig: {
-                maxOutputTokens: 2000,
+                maxOutputTokens: 65536,
             },
         });
 
