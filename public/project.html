@@ -6,6 +6,7 @@
     <title>Projet | Yggdrasil</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
             background-color: #0f172a;
@@ -33,6 +34,47 @@
         select option {
             background: #1e293b;
             color: white;
+        }
+
+        .markdown-content ul {
+            list-style-type: disc;
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .markdown-content ol {
+            list-style-type: decimal;
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .markdown-content strong {
+            font-weight: bold;
+            color: #a78bfa;
+        }
+
+        .markdown-content p {
+            margin-bottom: 0.5rem;
+        }
+
+        .markdown-content pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .markdown-content code {
+            font-family: monospace;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.2rem;
+            font-size: 0.9em;
         }
     </style>
 </head>
@@ -327,6 +369,7 @@
                 document.getElementById('view-missions').classList.add('hidden');
                 document.getElementById('view-brainstorm').classList.remove('hidden');
                 document.getElementById('view-logs').classList.add('hidden');
+                loadBrainstormHistory();
             } else {
                 document.getElementById('view-missions').classList.add('hidden');
                 document.getElementById('view-brainstorm').classList.add('hidden');
@@ -336,7 +379,46 @@
         }
 
         // --- BRAINSTORMING LOGIC ---
-        let chatHistory = [];
+        let isBrainstormLoaded = false;
+
+        async function loadBrainstormHistory() {
+            if (isBrainstormLoaded) return;
+            const container = document.getElementById('chat-history');
+            const suggestionsList = document.getElementById('suggestions-list');
+
+            // Clear current (keep placeholder if empty logic needed later, but here raw rewrite is easiest)
+            // But we have a placeholder "Commencez..." in HTML, we should keep it if empty.
+            // Let's fetch first.
+            try {
+                const res = await fetch(`/api/projects/${projectId}/brainstorm`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await res.json();
+
+                // 1. Load History
+                if (data.history && data.history.length > 0) {
+                    container.innerHTML = ''; // Clear placeholder
+                    data.history.forEach(h => {
+                        // Backend format: { role: 'user', parts: [{ text: '...' }] }
+                        appendMessage(h.role, h.parts[0].text);
+                    });
+                }
+
+                // 2. Load Suggestions
+                suggestionsList.innerHTML = '<p class="text-center text-slate-500 text-xs italic mt-10">Les tâches suggérées apparaîtront ici...</p>'; // Reset
+                if (data.suggestions && data.suggestions.length > 0) {
+                    suggestionsList.innerHTML = '';
+                    data.suggestions.forEach(s => addSuggestionCard(s));
+                    updateSuggestionCount();
+                }
+
+                isBrainstormLoaded = true;
+                container.scrollTop = container.scrollHeight;
+
+            } catch (err) {
+                console.error("Failed to load brainstorm", err);
+            }
+        }
 
         async function sendBrainstormMessage() {
             const input = document.getElementById('chat-input');
@@ -355,30 +437,26 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({
+                        project_id: projectId,
                         project_name: document.getElementById('p-name').innerText,
-                        project_desc: "", // Manque description dans initPage, on fera sans pour l'instant ou on l'ajoute plus tard
+                        project_desc: "",
                         current_tasks: allTasks.map(t => t.description),
                         message: msg,
-                        history: chatHistory
+                        history: [] // Legacy param, backend uses DB now if empty
                     })
                 });
 
                 const data = await res.json();
-
-                // Remove loading
                 document.getElementById(loadingId).remove();
 
                 if (data.error) {
                     appendMessage('error', data.error);
                 } else {
                     appendMessage('ai', data.reply);
-
-                    // Update History
-                    chatHistory.push({ role: "user", parts: [{ text: msg }] });
-                    chatHistory.push({ role: "model", parts: [{ text: data.reply }] });
-
-                    // Handle Suggestions
                     if (data.suggestions && data.suggestions.length > 0) {
+                        if (document.getElementById('suggestions-list').querySelector('.text-center')) {
+                            document.getElementById('suggestions-list').innerHTML = '';
+                        }
                         data.suggestions.forEach(addSuggestionCard);
                         updateSuggestionCount();
                     }
@@ -391,16 +469,20 @@
 
         function appendMessage(role, text, isLoading = false) {
             const container = document.getElementById('chat-history');
-            const id = 'msg-' + Date.now();
+            const id = 'msg-' + Date.now() + Math.random();
 
             const isUser = role === 'user';
+            // Supprimer le placeholder si c'est le premier message
+            const placeholder = container.querySelector('.text-center');
+            if (placeholder) placeholder.remove();
+
             const html = `
                 <div id="${id}" class="flex gap-4 ${isUser ? 'flex-row-reverse' : ''}">
                     <div class="w-8 h-8 rounded-full ${isUser ? 'bg-slate-700' : 'bg-purple-600'} flex items-center justify-center flex-shrink-0">
                         <i class="fa-solid ${isUser ? 'fa-user' : 'fa-robot'} text-white text-xs"></i>
                     </div>
-                    <div class="${isUser ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-100' : 'bg-slate-800/80 text-slate-300'} p-4 rounded-2xl ${isUser ? 'rounded-tr-none' : 'rounded-tl-none'} text-sm max-w-[80%]">
-                        ${isLoading ? '<div class="animate-pulse">...</div>' : text.replace(/\n/g, '<br>')}
+                    <div class="${isUser ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-100' : 'bg-slate-800/80 text-slate-300'} p-4 rounded-2xl ${isUser ? 'rounded-tr-none' : 'rounded-tl-none'} text-sm max-w-[80%] markdown-content">
+                        ${isLoading ? '<div class="animate-pulse">...</div>' : (isUser ? text.replace(/\n/g, '<br>') : marked.parse(text))}
                     </div>
                 </div>
             `;
@@ -411,25 +493,31 @@
 
         function addSuggestionCard(task) {
             const list = document.getElementById('suggestions-list');
-            if (list.querySelector('.text-center')) list.innerHTML = ''; // Clear placeholder
+            if (list.querySelector('.text-center')) list.innerHTML = '';
 
-            const tempId = Date.now() + Math.random();
             const html = `
-                <div id="sugg-${tempId}" class="p-4 bg-slate-900/80 border border-purple-500/30 rounded-xl group hover:border-purple-400 transition animate-in zoom-in duration-300">
+                <div id="sugg-${task.id}" class="p-4 bg-slate-900/80 border border-purple-500/30 rounded-xl group hover:border-purple-400 transition animate-in zoom-in duration-300">
                     <h4 class="font-bold text-sm text-purple-100 mb-1 suggestion-title">${task.title}</h4>
                     <p class="text-xs text-slate-400 mb-3 suggestion-desc">${task.description}</p>
                     <div class="flex gap-2">
-                        <button onclick="acceptSuggestion('${tempId}')" class="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-2 rounded-lg text-xs font-bold transition">Ajouter</button>
-                        <button onclick="deleteSuggestion('${tempId}')" class="w-8 bg-slate-800 hover:text-red-400 text-slate-500 rounded-lg transition"><i class="fa-solid fa-xmark"></i></button>
+                        <button onclick="acceptSuggestion('${task.id}')" class="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-2 rounded-lg text-xs font-bold transition">Ajouter</button>
+                        <button onclick="deleteSuggestion('${task.id}')" class="w-8 bg-slate-800 hover:text-red-400 text-slate-500 rounded-lg transition"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
             `;
             list.insertAdjacentHTML('afterbegin', html);
         }
 
-        function deleteSuggestion(id) {
-            document.getElementById('sugg-' + id).remove();
-            updateSuggestionCount();
+        async function deleteSuggestion(id) {
+            if (!confirm("Supprimer cette suggestion ?")) return;
+            try {
+                await fetch(`/api/brainstorm/suggestions/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                document.getElementById('sugg-' + id).remove();
+                updateSuggestionCount();
+            } catch (err) { console.error(err); }
         }
 
         async function acceptSuggestion(id) {
@@ -437,23 +525,39 @@
             const title = el.querySelector('.suggestion-title').innerText;
             const desc = el.querySelector('.suggestion-desc').innerText;
 
-            // Create Task
-            await fetch('/api/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ project_id: projectId, description: title, status: 'todo' })
-            });
+            const btn = el.querySelector('button');
+            btn.innerText = "...";
 
-            // Need to update long description ? For now we just put title in desc, maybe we can update long desc later or put desc in long_desc immediately if API supported it fully (our API supports description + long_description in update but insert is limited? Let's check insert... API insert only takes project_id, description, status. So we lose the long description)
-            // Correction: On va recharger la page, mais idéalement il faudrait supporter long_description au create. 
-            // Pour l'instant, faisons simple : ajout titre.
+            try {
+                // Create Task
+                await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ project_id: projectId, description: title, status: 'todo' })
+                });
 
-            el.remove();
-            updateSuggestionCount();
+                // NO RELOAD - Just update UI
+                // User asked to keeep tasks until deleted. 
+                // So we change button to "Ajouté" and maybe disable it?
+                btn.innerText = "Ajouté !";
+                btn.classList.remove('bg-purple-600', 'hover:bg-purple-500');
+                btn.classList.add('bg-emerald-600', 'cursor-default');
+                btn.disabled = true;
 
-            // Refresh tasks view secretly or reload ?
-            // Reload is safer for sync
-            window.location.reload();
+                // Optional: Refresh tasks in background if we want the "Missions" tab to be up to date
+                // But we don't have a simple "reloadTasks" function yet that doesn't rely on 'p.tasks' from initial load.
+                // Let's keep it simple: It's added. When user goes to missions tab, they might need to reload page to see it IF we don't update local state.
+                // To be clean: Add to allTasks and update DOM if existing function allows.
+                // Our 'renderTasks' uses local 'allTasks'. We should update it.
+                // Fetch updated tasks? Or just push.
+                // Let's just push a mock task to `allTasks` so render works if we switch tabs.
+                allTasks.push({ id: Date.now(), description: title, status: 'todo' }); // Fake ID until reload, but enough for display
+                renderTasks(allTasks);
+
+            } catch (err) {
+                alert("Erreur lors de l'ajout");
+                btn.innerText = "Ajouter";
+            }
         }
 
         function updateSuggestionCount() {

@@ -14,7 +14,7 @@ app.use(cors());
 
 // --- GEMINI CONFIG ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "API_KEY_MISSING");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 // --- AUTHENTICATION GITHUB ---
 
@@ -468,14 +468,79 @@ async function initDatabase() {
             )
         `);
 
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS brainstorm_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                project_id INT NOT NULL,
+                role ENUM('user', 'model') NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        `);
+
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS brainstorm_suggestions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                project_id INT NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                status ENUM('pending', 'accepted', 'rejected') DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        `);
+
         console.log("✅ Tables & Schema Verified");
     } catch (e) { console.error("❌ DB Init Error:", e); }
 }
 
+app.get('/api/projects/:id/brainstorm', authenticateToken, async (req, res) => {
+    try {
+        const [proj] = await pool.execute('SELECT user_id FROM projects WHERE id = ?', [req.params.id]);
+        if (proj.length === 0 || (proj[0].user_id && proj[0].user_id !== req.user.id)) return res.sendStatus(403);
+
+        const [history] = await pool.execute('SELECT role, content FROM brainstorm_history WHERE project_id = ? ORDER BY created_at ASC', [req.params.id]);
+        // Mapper history pour Gemini: [{ role: 'user', parts: [{ text: '...' }] }]
+        const formattedHistory = history.map(h => ({
+            role: h.role === 'user' ? 'user' : 'model',
+            parts: [{ text: h.content }]
+        }));
+
+        const [suggestions] = await pool.execute('SELECT * FROM brainstorm_suggestions WHERE project_id = ? ORDER BY created_at DESC', [req.params.id]);
+
+        res.json({ history: formattedHistory, suggestions });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/brainstorm/suggestions/:id', authenticateToken, async (req, res) => {
+    try {
+        // Verify ownership via join
+        const [sugg] = await pool.execute('SELECT s.project_id, p.user_id FROM brainstorm_suggestions s JOIN projects p ON s.project_id = p.id WHERE s.id = ?', [req.params.id]);
+        if (sugg.length === 0 || sugg[0].user_id !== req.user.id) return res.sendStatus(403);
+
+        await pool.execute('DELETE FROM brainstorm_suggestions WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/brainstorm', authenticateToken, async (req, res) => {
-    const { project_name, project_desc, current_tasks, message, history } = req.body;
+    const { project_id, project_name, project_desc, current_tasks, message, history } = req.body;
 
     try {
+        // Verify project ownership (using project_id if available, otherwise name logic but ID is safer and we should have it in front)
+        // Let's assume frontend will send project_id now.
+        let targetProjId = project_id;
+
+        if (!targetProjId) {
+            const [projects] = await pool.execute('SELECT id, user_id FROM projects WHERE name = ? AND user_id = ?', [project_name, req.user.id]);
+            if (projects.length === 0) return res.status(404).json({ error: "Projet introuvable" });
+            targetProjId = projects[0].id;
+        }
+
+        // 1. Save User Message
+        await pool.execute('INSERT INTO brainstorm_history (project_id, role, content) VALUES (?, "user", ?)', [targetProjId, message]);
+
         const chat = model.startChat({
             history: history || [],
             generationConfig: {
@@ -516,7 +581,20 @@ app.post('/api/brainstorm', authenticateToken, async (req, res) => {
             }
         }
 
-        res.json({ reply: cleanResponse, suggestions: suggestedTasks });
+        // 2. Save Model Response
+        await pool.execute('INSERT INTO brainstorm_history (project_id, role, content) VALUES (?, "model", ?)', [targetProjId, cleanResponse]);
+
+        // 3. Save Suggestions
+        const savedSuggestions = [];
+        for (let task of suggestedTasks) {
+            const [resSugg] = await pool.execute(
+                'INSERT INTO brainstorm_suggestions (project_id, title, description, status) VALUES (?, ?, ?, "pending")',
+                [targetProjId, task.title, task.description]
+            );
+            savedSuggestions.push({ ...task, id: resSugg.insertId });
+        }
+
+        res.json({ reply: cleanResponse, suggestions: savedSuggestions });
 
     } catch (err) {
         console.error("Gemini Error:", err);
