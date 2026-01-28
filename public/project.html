@@ -382,6 +382,8 @@
                     body: JSON.stringify({ id: projectId, is_favorite: newState })
                 });
                 updateFavoriteUI(newState);
+                // Refresh Sidebar
+                if (window.updateSidebarContent) window.updateSidebarContent();
             } catch (e) { console.error(e); }
         }
 
@@ -762,21 +764,12 @@
                 });
 
                 // NO RELOAD - Just update UI
-                // User asked to keeep tasks until deleted. 
-                // So we change button to "Ajouté" and maybe disable it?
-                btn.innerText = "Ajouté !";
-                btn.classList.remove('bg-purple-600', 'hover:bg-purple-500');
-                btn.classList.add('bg-emerald-600', 'cursor-default');
-                btn.disabled = true;
+                // Remove the suggestion card from DOM
+                el.remove();
+                updateSuggestionCount();
 
-                // Optional: Refresh tasks in background if we want the "Missions" tab to be up to date
-                // But we don't have a simple "reloadTasks" function yet that doesn't rely on 'p.tasks' from initial load.
-                // Let's keep it simple: It's added. When user goes to missions tab, they might need to reload page to see it IF we don't update local state.
-                // To be clean: Add to allTasks and update DOM if existing function allows.
-                // Our 'renderTasks' uses local 'allTasks'. We should update it.
-                // Fetch updated tasks? Or just push.
-                // Let's just push a mock task to `allTasks` so render works if we switch tabs.
-                allTasks.push({ id: Date.now(), description: title, status: 'todo' }); // Fake ID until reload, but enough for display
+                // Add to list visually
+                allTasks.push({ id: Date.now(), description: title, status: 'todo' });
                 renderTasks(allTasks);
 
             } catch (err) {

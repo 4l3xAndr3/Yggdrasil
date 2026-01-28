@@ -39,10 +39,20 @@ async function updateSidebarContent() {
             .map(p => `
                 <a href="/project.html?name=${encodeURIComponent(p.name)}" class="flex items-center gap-3 p-3 rounded-xl text-sm transition ${p.id === favId ? 'text-emerald-400 font-bold bg-emerald-500/5 border border-emerald-500/10' : 'text-slate-500 hover:text-white hover:bg-white/5'}">
                     <i class="fa-solid ${p.id === favId ? 'fa-star text-yellow-500' : 'fa-folder'} w-5"></i>
-                    ${p.name}
+                    ${escapeHtml(p.name)}
                 </a>
             `).join('');
     } catch (err) { console.error("Erreur sidebar content:", err); }
+}
+
+function escapeHtml(text) {
+    if (!text) return text;
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 // --- GESTION DE LA POP-UP (MODAL) ---
