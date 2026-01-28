@@ -45,21 +45,51 @@
                 const resDet = await fetch(`/api/project-details/${encodeURIComponent(p.name)}`, { headers: { 'Authorization': 'Bearer ' + token } });
                 const details = await resDet.json();
                 container.innerHTML += `
-                    <a href="/project.html?name=${p.name}" class="glass-card p-6 rounded-2xl flex items-center justify-between hover:border-emerald-500/50 transition group">
-                        <div class="flex items-center gap-6">
-                            <div class="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center border border-white/5"><i class="fa-solid fa-folder text-emerald-500"></i></div>
-                            <div>
+                    <div class="glass-card p-6 rounded-2xl flex items-center justify-between hover:border-emerald-500/50 transition group relative">
+                        <a href="/project.html?name=${p.name}" class="absolute inset-0 z-0"></a>
+                        <div class="flex items-center gap-6 z-10">
+                            <div class="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center border border-white/5 cursor-pointer hover:bg-slate-800 transition" onclick="toggleFavList(event, '${p.id}', ${p.is_favorite})">
+                                <i class="${p.is_favorite ? 'fa-solid text-yellow-500' : 'fa-regular text-slate-500'} fa-star"></i>
+                            </div>
+                            <div class="pointer-events-none">
                                 <h3 class="text-lg font-bold group-hover:text-emerald-400 transition">${p.name}</h3>
                                 <span class="text-[10px] uppercase font-bold text-slate-500">${p.status}</span>
                             </div>
                         </div>
-                        <div class="text-right">
-                            <div class="text-sm font-black text-emerald-400 font-mono">${details.progress}%</div>
-                            <div class="w-24 bg-slate-800 h-1 rounded-full mt-2"><div class="bg-emerald-500 h-full" style="width: ${details.progress}%"></div></div>
+                        <div class="flex items-center gap-6 z-10">
+                             <div class="text-right pointer-events-none">
+                                <div class="text-sm font-black text-emerald-400 font-mono">${details.progress}%</div>
+                                <div class="w-24 bg-slate-800 h-1 rounded-full mt-2"><div class="bg-emerald-500 h-full" style="width: ${details.progress}%"></div></div>
+                            </div>
+                            <button onclick="deleteProjectList(event, '${p.id}')" class="w-10 h-10 rounded-xl flex items-center justify-center text-slate-600 hover:text-red-500 hover:bg-red-500/10 transition">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
                         </div>
-                    </a>
+                    </div>
                 `;
             }
+        }
+
+        async function toggleFavList(e, id, currentVal) {
+            e.stopPropagation(); // prevent navigation
+            e.preventDefault();
+            await fetch('/api/project-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('yggdrasil_token') },
+                body: JSON.stringify({ id: id, is_favorite: !currentVal })
+            });
+            initPage();
+        }
+
+        async function deleteProjectList(e, id) {
+            e.stopPropagation();
+            e.preventDefault();
+            if (!confirm("Supprimer ce projet ?")) return;
+            await fetch(`/api/projects/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('yggdrasil_token') }
+            });
+            initPage();
         }
         window.onload = () => includeSidebar().then(initPage);
     </script>

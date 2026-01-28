@@ -257,7 +257,7 @@ app.post('/api/projects/import-github', authenticateToken, async (req, res) => {
 
 app.get('/api/projects-list', authenticateToken, async (req, res) => {
     try {
-        const [rows] = await pool.execute('SELECT id, name, status FROM projects WHERE user_id = ? ORDER BY name ASC', [req.user.id]);
+        const [rows] = await pool.execute('SELECT id, name, status, is_favorite FROM projects WHERE user_id = ? ORDER BY name ASC', [req.user.id]);
         res.json(rows);
     } catch (err) { res.status(500).send(err.message); }
 });
@@ -281,13 +281,17 @@ app.get('/api/project-details/:name', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/tasks', authenticateToken, async (req, res) => {
-    const { project_id, description, long_description, status } = req.body;
+    const { project_id, description, long_description, status, suggestion_id } = req.body;
     try {
         const [proj] = await pool.execute('SELECT user_id, github_repo FROM projects WHERE id = ?', [project_id]);
         if (proj.length === 0 || (proj[0].user_id && proj[0].user_id !== req.user.id)) return res.sendStatus(403);
 
         await pool.execute('INSERT INTO tasks (project_id, description, long_description, status) VALUES (?, ?, ?, ?)', [project_id, description, long_description || null, status || 'todo']);
         await updateProjectProgress(project_id);
+
+        if (suggestion_id) {
+            await pool.execute('DELETE FROM brainstorm_suggestions WHERE id = ?', [suggestion_id]);
+        }
 
         // Sync if needed (example if creating directly in progress)
         if (status === 'in_progress' && proj[0].github_repo) {
@@ -325,7 +329,7 @@ app.post('/api/tasks/update-details', authenticateToken, async (req, res) => {
 
 // --- HELPER FUNCTION : GITHUB SYNC ---
 async function syncTaskToGithub(token, repoFullName, taskDesc) {
-    const filePath = 'taches.md';
+    const filePath = 'todo.md';
     const apiUrl = `https://api.github.com/repos/${repoFullName}/contents/${filePath}`;
     const headers = {
         Authorization: `Bearer ${token}`,
@@ -384,12 +388,36 @@ app.post('/api/tasks/delete', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/project-update', authenticateToken, async (req, res) => {
-    const { name, status } = req.body;
+    const { id, name, description, status, is_favorite } = req.body;
     try {
-        const [proj] = await pool.execute('SELECT id FROM projects WHERE name = ? AND user_id = ?', [name, req.user.id]);
+        // id is preferred, but we support name lookup for legacy if id missing (though updated frontend should use ID)
+        let query = 'UPDATE projects SET ';
+        let params = [];
+        const updates = [];
+
+        if (name) { updates.push('name = ?'); params.push(name); }
+        if (description !== undefined) { updates.push('description = ?'); params.push(description); }
+        if (status) { updates.push('status = ?'); params.push(status); }
+        if (is_favorite !== undefined) { updates.push('is_favorite = ?'); params.push(is_favorite); }
+
+        if (updates.length === 0) return res.json({ success: true });
+
+        query += updates.join(', ') + ' WHERE id = ? AND user_id = ?';
+        params.push(id, req.user.id);
+
+        const [result] = await pool.execute(query, params);
+        if (result.affectedRows === 0) return res.sendStatus(403);
+
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        const [proj] = await pool.execute('SELECT id FROM projects WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
         if (proj.length === 0) return res.sendStatus(403);
 
-        await pool.execute('UPDATE projects SET status = ? WHERE name = ? AND user_id = ?', [status, name, req.user.id]);
+        await pool.execute('DELETE FROM projects WHERE id = ?', [req.params.id]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });

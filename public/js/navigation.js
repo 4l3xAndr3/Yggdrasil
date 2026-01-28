@@ -34,6 +34,7 @@ async function updateSidebarContent() {
         if (!sideMenu) return;
 
         sideMenu.innerHTML = projects
+            .filter(p => p.status !== 'En pause' && p.status !== 'Terminé')
             .sort((a, b) => (a.id === favId ? -1 : 1)) // Favori toujours en haut
             .map(p => `
                 <a href="/project.html?name=${encodeURIComponent(p.name)}" class="flex items-center gap-3 p-3 rounded-xl text-sm transition ${p.id === favId ? 'text-emerald-400 font-bold bg-emerald-500/5 border border-emerald-500/10' : 'text-slate-500 hover:text-white hover:bg-white/5'}">
