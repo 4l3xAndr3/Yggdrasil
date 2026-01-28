@@ -760,7 +760,7 @@
                 await fetch('/api/tasks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                    body: JSON.stringify({ project_id: projectId, description: title, status: 'todo', suggestion_id: id })
+                    body: JSON.stringify({ project_id: projectId, description: title, long_description: desc, status: 'todo', suggestion_id: id })
                 });
 
                 // NO RELOAD - Just update UI

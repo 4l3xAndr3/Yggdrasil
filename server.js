@@ -398,7 +398,14 @@ app.post('/api/project-update', authenticateToken, async (req, res) => {
         if (name) { updates.push('name = ?'); params.push(name); }
         if (description !== undefined) { updates.push('description = ?'); params.push(description); }
         if (status) { updates.push('status = ?'); params.push(status); }
-        if (is_favorite !== undefined) { updates.push('is_favorite = ?'); params.push(is_favorite); }
+        if (is_favorite !== undefined) {
+            // Enforce single favorite: if setting to true, reset others
+            if (is_favorite === true) {
+                await pool.execute('UPDATE projects SET is_favorite = 0 WHERE user_id = ?', [req.user.id]);
+            }
+            updates.push('is_favorite = ?');
+            params.push(is_favorite);
+        }
 
         if (updates.length === 0) return res.json({ success: true });
 
