@@ -1,12 +1,10 @@
 # todo
 
+- [x] ajouter un bouton exporter
+- [x] le bouton exxporter doit creer un fichier markdown ou aura le chois de mettre les taches qu'on veut avec un ordre (en cours, a faire , terminer)
 
+- [x] gerer les div :
+    - [x] ajouter un element scrollable pour les ideée de brainstorming ia 
+    - [x] ajouter un element scrollable pour les div des taches
 
-## tache probleme
-quand j'ajoute une tache par suggestion ia sa met que le titre et pas la description technique  (alors qu'on voit que il y a une description technique et un titre dans la suggestion) donc il faut que quand j'ajoute une tache par suggestion ia que le titre et la description technique soient bien ajouter
-
-pour le favoris il faut que quand j'ajoute un projet en favoris sa change le favoris il y a doit que 1 projet soit en favoris
-
-
-le todo ne marche pas . normalement il faut que quand j'ajoute un projet en 'en cours' sa change le todo.md dans github et le creer si il n'existe pas 
-
+- [x] retravailler la responsiviter
